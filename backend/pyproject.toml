@@ -1,0 +1,18 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.135.1",
+    "langchain>=1.2.13",
+    "langchain-core>=1.2.20",
+    "langchain-google-genai>=2.0.10",
+    "langchain-community>=0.1.0",
+    "pydantic>=2.10.3",
+    "langgraph-checkpoint-sqlite>=3.0.3",
+    "aiosqlite>=0.22.1",
+]
+[tool.fastapi]
+entrypoint = "main:app"

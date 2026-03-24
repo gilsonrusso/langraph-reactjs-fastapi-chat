@@ -1,0 +1,12 @@
+{
+  "folders": [
+    {
+      "name": "Project Root",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "backend/.venv/bin/python",
+    "python.analysis.extraPaths": ["backend"]
+  }
+}
