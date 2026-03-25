@@ -2,7 +2,7 @@ import { Box, CircularProgress, Typography } from '@mui/material';
 import type { StreamChunk } from '@tanstack/ai';
 import { createChatClientOptions, fetchServerSentEvents, type InferChatMessages } from '@tanstack/ai-client';
 import { useChat } from '@tanstack/ai-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import ChatContainer from '../components/chat/ChatContainer';
 import { useChatDetail } from '../hooks/useChatQueries';
@@ -18,7 +18,8 @@ const ChatRouteReady: React.FC<{
   initialMsgs: any[];
   onHistoryUpdate: () => void;
   isNewChatUrl: boolean;
-}> = ({ id, initialMsgs, onHistoryUpdate, isNewChatUrl }) => {
+  onFormalize: (id: string) => void;
+}> = ({ id, initialMsgs, onHistoryUpdate, isNewChatUrl, onFormalize }) => {
   const navigate = useNavigate();
 
   const chatOptions = createChatClientOptions({
@@ -48,6 +49,7 @@ const ChatRouteReady: React.FC<{
 
   const handleSendMessage = (text: string) => {
     if (isNewChatUrl) {
+      onFormalize(id);
       navigate(`/c/${id}`, { replace: true });
     }
     sendMessage(text);
@@ -112,21 +114,27 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
   const idFromUrl = location.pathname.startsWith('/c/') ? location.pathname.split('/')[2] : undefined;
 
   const [activeId, setActiveId] = useState(() => idFromUrl || uuidv4());
+  const justFormalizedIdRef = useRef<string | null>(null);
   
   // Sync activeId with URL natural navigations safely!
   useEffect(() => {
     if (idFromUrl) {
-      if (idFromUrl !== activeId) {
-        setActiveId(idFromUrl);
-      }
+      setActiveId((prev) => {
+        if (idFromUrl !== prev) {
+          justFormalizedIdRef.current = null;
+          return idFromUrl;
+        }
+        return prev;
+      });
     } else {
       setActiveId(uuidv4());
+      justFormalizedIdRef.current = null;
     }
   }, [idFromUrl]);
 
   const isNewChatUrl = !idFromUrl;
 
-  const shouldFetch = !!idFromUrl && idFromUrl === activeId;
+  const shouldFetch = !!idFromUrl && idFromUrl === activeId && justFormalizedIdRef.current !== activeId;
   const { data: msgs, isLoading } = useChatDetail(shouldFetch ? activeId : undefined);
   
   const isInitializing = shouldFetch && isLoading;
@@ -165,6 +173,7 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
       initialMsgs={initialMsgs}
       onHistoryUpdate={onHistoryUpdate}
       isNewChatUrl={isNewChatUrl}
+      onFormalize={(id) => { justFormalizedIdRef.current = id; }}
     />
   );
 };
