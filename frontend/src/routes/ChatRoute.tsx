@@ -1,35 +1,28 @@
 import { Box, CircularProgress, Typography } from '@mui/material';
 import type { StreamChunk } from '@tanstack/ai';
-import { fetchServerSentEvents } from '@tanstack/ai-client';
+import { createChatClientOptions, fetchServerSentEvents, type InferChatMessages } from '@tanstack/ai-client';
 import { useChat } from '@tanstack/ai-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import ChatContainer from '../components/chat/ChatContainer';
-import { chatService } from '../services/chatService';
+import { useChatDetail } from '../hooks/useChatQueries';
+import type { Role } from '../types/chat';
+import { v4 as uuidv4 } from 'uuid';
 
 interface ChatRouteProps {
   onHistoryUpdate: () => void;
 }
 
-interface MessagePart {
-  type: string;
-  text?: string;
-  content?: string;
-}
-
-// ----------------------------------------------------
-// INNER COMPONENT: Only mounts when history is READY
-// ----------------------------------------------------
 const ChatRouteReady: React.FC<{
-  id: string; // Guaranteed to be a valid UUID explicitly
+  id: string;
   initialMsgs: any[];
   onHistoryUpdate: () => void;
   isNewChatUrl: boolean;
 }> = ({ id, initialMsgs, onHistoryUpdate, isNewChatUrl }) => {
   const navigate = useNavigate();
-  
-  const { messages: tanstackMessages, sendMessage, isLoading } = useChat({
-    id: id, // Explicitly namespace the chat client to prevent cross-contamination!
+
+  const chatOptions = createChatClientOptions({
+    id: id,
     connection: fetchServerSentEvents('http://localhost:8000/api/chat'),
     initialMessages: initialMsgs,
     body: {
@@ -43,6 +36,10 @@ const ChatRouteReady: React.FC<{
     },
   });
 
+  type RouteMessage = InferChatMessages<typeof chatOptions>[number];
+
+  const { messages: tanstackMessages, sendMessage, isLoading } = useChat(chatOptions);
+
   const handleSendMessage = (text: string) => {
     if (isNewChatUrl) {
       navigate(`/c/${id}`, { replace: true });
@@ -52,39 +49,25 @@ const ChatRouteReady: React.FC<{
 
   const mappedMessages = useMemo(() => {
     if (!tanstackMessages) return [];
-    
-    return tanstackMessages.map((msg, idx: number) => {
+
+    return tanstackMessages.map((msg: RouteMessage, idx: number) => {
       let content = '';
       let hasToolCall = false;
       let toolName = '';
 
-      const anyMsg = msg as unknown as Record<string, unknown>;
-
-      if (anyMsg.parts && Array.isArray(anyMsg.parts)) {
-        // Extract tool calls
-        const toolPart = anyMsg.parts.find((p: MessagePart | unknown) => {
-          const part = p as MessagePart;
-          return part.type === 'tool-call';
-        }) as (MessagePart & { toolName?: string }) | undefined;
-        
-        if (toolPart) {
-          hasToolCall = true;
-          toolName = toolPart.toolName || 'ferramenta';
-        }
-
-        // Extract text
-        content = anyMsg.parts
-          .filter((p: MessagePart | unknown) => {
-            const part = p as MessagePart;
-            return part.type === 'text' || part.type === 'content';
-          })
-          .map((p: MessagePart | unknown) => {
-            const part = p as MessagePart;
-            return part.text || part.content || '';
-          })
-          .join('');
+      if (msg.parts && Array.isArray(msg.parts)) {
+        msg.parts.forEach((part) => {
+          if (part.type === 'tool-call') {
+            hasToolCall = true;
+            toolName = part.name || 'ferramenta';
+          } else if (part.type === 'text' || (part as any).type === 'content') {
+            content += (part as any).text || (part as any).content || '';
+          } else if (part.type === 'thinking') {
+            content += `\n> 🤔 **Pensando:** ${(part as any).content}\n\n`;
+          }
+        });
       } else {
-        content = typeof anyMsg.content === 'string' ? anyMsg.content : typeof anyMsg.text === 'string' ? anyMsg.text : '';
+        content = typeof (msg as any).content === 'string' ? (msg as any).content : typeof (msg as any).text === 'string' ? (msg as any).text : '';
       }
 
       if (hasToolCall && !content) {
@@ -92,8 +75,8 @@ const ChatRouteReady: React.FC<{
       }
 
       return {
-        id: (anyMsg.id as string) || `msg-${idx}`,
-        role: (anyMsg.role === 'user' ? 'user' : hasToolCall && !content ? 'tool' : 'assistant') as 'user' | 'assistant' | 'tool',
+        id: (msg.id as string) || `msg-${idx}`,
+        role: (msg.role === 'user' ? 'user' : hasToolCall && !content ? 'tool' : 'assistant') as Role,
         content: content || '',
       };
     });
@@ -109,59 +92,41 @@ const ChatRouteReady: React.FC<{
         bgcolor: 'background.default',
       }}
     >
-      <ChatContainer 
-        messages={mappedMessages} 
-        isLoading={isLoading} 
-        onSendMessage={handleSendMessage} 
+      <ChatContainer
+        messages={mappedMessages}
+        isLoading={isLoading}
+        onSendMessage={handleSendMessage}
       />
     </Box>
   );
 };
 
-// ----------------------------------------------------
-// OUTER COMPONENT: Handles loading the history async
-// ----------------------------------------------------
 export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
   const location = useLocation();
-  // Parse ID since we are using a wildcard route `/*`
   const idFromUrl = location.pathname.startsWith('/c/') ? location.pathname.split('/')[2] : undefined;
-  
-  // Guarantee an ID natively per component unmount lifespan. 
-  // If the URL has no ID, establish a strong local UUID upfront!
-  const [activeId] = useState(() => idFromUrl || crypto.randomUUID());
+
+  const [activeId] = useState(() => idFromUrl || uuidv4());
   const isNewChatUrl = !idFromUrl;
 
-  const [initialMsgs, setInitialMsgs] = useState<any[]>([]);
+  const { data: msgs, isLoading } = useChatDetail(idFromUrl);
   // Only stall rendering if we came with an explicit URL ID that needs verification
-  const [isInitializing, setIsInitializing] = useState(!!idFromUrl);
+  const isInitializing = !!idFromUrl && isLoading;
 
-  useEffect(() => {
-    // If this component mounts WITH a requested URL ID, fetch its history strictly!
-    if (idFromUrl) {
-      chatService.getChatHistory(idFromUrl)
-        .then(msgs => {
-          // Format messages tightly so TanStack accepts them unconditionally
-          const compatibleMsgs = msgs.map(m => {
-            let txt = '';
-            if (m.parts && Array.isArray(m.parts)) {
-              txt = m.parts.filter((p: any) => p.type === 'text' || p.type === 'content').map((p: any) => p.text || p.content || '').join('');
-            }
-            return {
-              id: m.id || crypto.randomUUID(),
-              role: m.role === 'tool' ? 'assistant' : m.role,
-              content: txt || m.content || '',
-              parts: m.parts || []
-            };
-          });
-          setInitialMsgs(compatibleMsgs);
-          setIsInitializing(false);
-        })
-        .catch(err => {
-          console.error('Failed to load history:', err);
-          setIsInitializing(false);
-        });
-    }
-  }, [idFromUrl]);
+  const initialMsgs = useMemo(() => {
+    if (!msgs) return [];
+    return msgs.map(m => {
+      let txt = '';
+      if (m.parts && Array.isArray(m.parts)) {
+        txt = m.parts.filter((p: any) => p.type === 'text' || p.type === 'content').map((p: any) => p.text || p.content || '').join('');
+      }
+      return {
+        id: m.id || uuidv4(),
+        role: m.role === 'tool' ? 'assistant' : m.role,
+        content: txt || m.content || '',
+        parts: m.parts || []
+      };
+    });
+  }, [msgs]);
 
   if (isInitializing) {
     return (
@@ -175,11 +140,11 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
   }
 
   return (
-    <ChatRouteReady 
-      id={activeId} 
-      initialMsgs={initialMsgs} 
-      onHistoryUpdate={onHistoryUpdate} 
-      isNewChatUrl={isNewChatUrl} 
+    <ChatRouteReady
+      id={activeId}
+      initialMsgs={initialMsgs}
+      onHistoryUpdate={onHistoryUpdate}
+      isNewChatUrl={isNewChatUrl}
     />
   );
 };

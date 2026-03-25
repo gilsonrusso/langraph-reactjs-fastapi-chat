@@ -5,9 +5,11 @@ export interface MessagePart {
   content?: string;
 }
 
+export type Role = 'user' | 'assistant' | 'tool';
+
 export interface Message {
   id?: string;
-  role: 'user' | 'assistant' | 'tool';
+  role: Role;
   content?: string;
   parts?: MessagePart[];
   metadata?: {

@@ -1,17 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Box, ThemeProvider, CssBaseline } from '@mui/material';
 import { Sidebar } from './components/layout/Sidebar';
 import { useAppTheme } from './ui/theme';
-import { chatService } from './services/chatService';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { Routes, Route, useNavigate, useLocation } from 'react-router';
 import { ChatRoute } from './routes/ChatRoute';
 
+import { useQueryClient } from '@tanstack/react-query';
+import { useChatHistoryList, useDeleteChat } from './hooks/useChatQueries';
+
 const App: React.FC = () => {
   const theme = useAppTheme();
-  const [history, setHistory] = useState<{ id: string; title: string }[]>([]);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
+
+  const queryClient = useQueryClient();
+  const { data: history = [] } = useChatHistoryList();
+  const deleteChatMutation = useDeleteChat();
   
   const navigate = useNavigate();
   const location = useLocation();
@@ -23,10 +28,7 @@ const App: React.FC = () => {
   // explicitly preventing unmounts when the URL formalizes during streaming.
   const [routeKey, setRouteKey] = useState<string>(currentId || 'new');
 
-  // Initial load of history
-  useEffect(() => {
-    chatService.getHistory().then(setHistory).catch(console.error);
-  }, []);
+  // Initial load of history is handled automatically by useChatHistoryList hook
 
   const handleSelectChat = (id: string | null) => {
     setRouteKey(id || `new-${Date.now()}`);
@@ -42,23 +44,23 @@ const App: React.FC = () => {
     setDeleteConfirmOpen(true);
   };
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = () => {
     if (chatToDelete) {
-      await chatService.deleteChat(chatToDelete);
-      
-      setHistory(prev => prev.filter(c => c.id !== chatToDelete));
-      
-      if (currentId === chatToDelete) {
-        setRouteKey(`new-${Date.now()}`);
-        navigate('/');
-      }
+      deleteChatMutation.mutate(chatToDelete, {
+        onSuccess: () => {
+          if (currentId === chatToDelete) {
+            setRouteKey(`new-${Date.now()}`);
+            navigate('/');
+          }
+        }
+      });
     }
     setDeleteConfirmOpen(false);
     setChatToDelete(null);
   };
 
   const handleHistoryUpdate = () => {
-    chatService.getHistory().then(setHistory).catch(console.error);
+    queryClient.invalidateQueries({ queryKey: ['chatHistoryList'] });
   };
 
   return (

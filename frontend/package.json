@@ -17,12 +17,14 @@
     "@mui/material": "^7.3.9",
     "@tanstack/ai": "^0.8.1",
     "@tanstack/ai-react": "^0.7.2",
-    "@tanstack/react-query": "^5.94.5",
+    "@tanstack/react-query": "^4.43.0",
+    "axios": "^1.13.6",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
     "react-router": "^7.13.2",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
