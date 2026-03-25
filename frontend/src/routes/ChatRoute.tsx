@@ -2,7 +2,7 @@ import { Box, CircularProgress, Typography } from '@mui/material';
 import type { StreamChunk } from '@tanstack/ai';
 import { createChatClientOptions, fetchServerSentEvents, type InferChatMessages } from '@tanstack/ai-client';
 import { useChat } from '@tanstack/ai-react';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import ChatContainer from '../components/chat/ChatContainer';
 import { useChatDetail } from '../hooks/useChatQueries';
@@ -38,7 +38,13 @@ const ChatRouteReady: React.FC<{
 
   type RouteMessage = InferChatMessages<typeof chatOptions>[number];
 
-  const { messages: tanstackMessages, sendMessage, isLoading } = useChat(chatOptions);
+  const { messages: tanstackMessages, sendMessage, isLoading, clear } = useChat(chatOptions);
+
+  useEffect(() => {
+    if (isNewChatUrl) {
+      clear();
+    }
+  }, [id, isNewChatUrl, clear]);
 
   const handleSendMessage = (text: string) => {
     if (isNewChatUrl) {

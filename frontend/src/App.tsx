@@ -73,9 +73,12 @@ const App: React.FC = () => {
           onSelectChat={handleSelectChat}
           onDeleteChat={handleDeleteRequest}
         />
-        <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+        <Box
+          key={routeKey}
+          sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
+        >
           <Routes>
-            <Route path="/*" element={<ChatRoute key={routeKey} onHistoryUpdate={handleHistoryUpdate} />} />
+            <Route path="/*" element={<ChatRoute onHistoryUpdate={handleHistoryUpdate} />} />
           </Routes>
         </Box>
       </Box>
