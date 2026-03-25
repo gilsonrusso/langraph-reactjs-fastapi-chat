@@ -10,24 +10,30 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useChatHistoryList, useDeleteChat } from './hooks/useChatQueries';
 
 const App: React.FC = () => {
+  // Theme context global fornecendo consistência em componentes visuais Material UI
   const theme = useAppTheme();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
+  
+  // Utiliza TanStack Query para orquestrar cacheamento inteligente da lista de conversas da Sidebar
+  // Prevenindo o recarregamento compulsivo de APIs sem perder resiliência de cache.
   const { data: history = [] } = useChatHistoryList();
   const deleteChatMutation = useDeleteChat();
   
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Extract current chat ID from URL
+  // Isola dinamicamente o chat atuante através do parsing explícito da barra de navegação/URL.
   const currentId = location.pathname.startsWith('/c/') ? location.pathname.split('/')[2] : null;
 
   // A manual key that only changes when the user clicks the sidebar, 
   // Initial load of history is handled automatically by useChatHistoryList hook
 
   const handleSelectChat = (id: string | null) => {
+    // Roteador central garante o push de URL para um ID já existente no histórico.
+    // Se "null", redireciona para raiz '/' criando ativamente uma página inicial 'Nova Conversa'.
     if (id) {
       navigate(`/c/${id}`);
     } else {

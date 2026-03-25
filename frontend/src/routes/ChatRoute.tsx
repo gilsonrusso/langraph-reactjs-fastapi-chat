@@ -22,6 +22,8 @@ const ChatRouteReady: React.FC<{
 }> = ({ id, initialMsgs, onHistoryUpdate, isNewChatUrl, onFormalize }) => {
   const navigate = useNavigate();
 
+  // Configurações mestre instanciadas para ancorar o link ao endpoint de Chat streaming (TanStack).
+  // Exige um array de 'initialMessages' ao carregar conversas passadas restauradas pelo cache Query.
   const chatOptions = createChatClientOptions({
     id: id,
     connection: fetchServerSentEvents('http://localhost:8000/api/chat'),
@@ -49,9 +51,12 @@ const ChatRouteReady: React.FC<{
 
   const handleSendMessage = (text: string) => {
     if (isNewChatUrl) {
+      // Impede temporariamente o componente Chat de se desmontar destruindo a conexão.
+      // Ele "formaliza" essa montagem nova e migra a URL com o respectivo UUID recém gerado.
       onFormalize(id);
       navigate(`/c/${id}`, { replace: true });
     }
+    // Dispara a chamada nativa geradora pro SSE / API do OpenAI ou Agente no Backend
     sendMessage(text);
   };
 
@@ -113,10 +118,13 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
   const location = useLocation();
   const idFromUrl = location.pathname.startsWith('/c/') ? location.pathname.split('/')[2] : undefined;
 
+  // UUID raiz. Fixado durante as rotas temporárias onde a URL pura ainda carece de formalização.
   const [activeId, setActiveId] = useState(() => idFromUrl || uuidv4());
+  
+  // Uma Ref invisível a renderizações. Previne a revalidação Query de apagar os balões do chat ao formalizar na primeira mensagem enviada.
   const justFormalizedIdRef = useRef<string | null>(null);
   
-  // Sync activeId with URL natural navigations safely!
+  // Efeito responsável pela vida íntegra da janela de navegação cruzada entre Sidebar Buttons e Voltar/Avançar Nativo do Browser
   useEffect(() => {
     if (idFromUrl) {
       setActiveId((prev) => {

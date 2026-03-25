@@ -22,6 +22,12 @@ DB_NAME = "checkpoints.sqlite"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Garante a preparação assíncrona inicial da aplicação:
+    1. Define o 'Saver' do LangGraph responsável pelo banco SQLite (checkpoints).
+    2. Instancia o agente principal e as ferramentas operacionais (Ex: Tavily).
+    3. Anexa o agente e o checkpointer livremente na aplicação via 'app.state'.
+    """
     # Startup: Initialize the async checkpointer
     async with AsyncSqliteSaver.from_conn_string(DB_NAME) as saver:
         # Initialize the search tool
@@ -82,7 +88,11 @@ def format_agui_event(event_type: str, data: Any = None) -> str:
 
 
 async def stream_agui_events(agent, message_text: str, thread_id: str) -> AsyncIterable[str]:
-    """Streams LangGraph events and transforms them into the AG-UI protocol."""
+    """
+    Consome o iterador de streaming de grafos (astream_events) do Agente LangChain base.
+    Traduz os fluxos de chunk disparados da IA em tempo real (on_chat_model_stream, on_tool_start) 
+    para a arquitetura envelopada de String literal JSON requerida pela conexão de Server-Sent Events (SSE).
+    """
     config = {"configurable": {"thread_id": thread_id}}
 
     try:
@@ -145,7 +155,11 @@ async def get_history():
 
 @app.get("/api/chat/{thread_id}")
 async def get_chat_history(thread_id: str, request: Request):
-    """Retrieve full message history for a thread."""
+    """
+    Recupera um histórico preexistente de conversa mapeado num sub-grafo ativo do LangChain.
+    Faz a tradução das mensagens estritas em objetos base e unifica componentes de multimidia
+    no schema nativo do ReactJS impedindo que ferramentas complexas quebrem o processador.
+    """
     agent = request.app.state.agent
     config = {"configurable": {"thread_id": thread_id}}
     state = await agent.aget_state(config)
@@ -204,6 +218,12 @@ async def delete_chat(thread_id: str):
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest, fast_request: Request) -> EventSourceResponse:
+    """
+    Endpoint contínuo e núcleo central do envio de prompts. 
+    1. Determina ou cria um respectivo Thread (ID/UUID da conversa).
+    2. Extrai a String da última mensagem postada.
+    3. Constrói de imediato a ponte infinita entre Client/Backend repassando para o Server-Sent Event provider.
+    """
     if not request.messages:
         raise HTTPException(status_code=400, detail="No messages provided")
 
