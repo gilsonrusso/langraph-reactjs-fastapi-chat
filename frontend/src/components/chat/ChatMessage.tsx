@@ -25,7 +25,7 @@ const ChatMessage: React.FC<MessageProps> = ({ role, content, metadata }) => {
           <SearchIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
         </Box>
         <Typography variant="caption" sx={{ fontStyle: 'italic', pt: 0.2 }}>
-          {content}...
+          {content}
         </Typography>
       </Box>
     );

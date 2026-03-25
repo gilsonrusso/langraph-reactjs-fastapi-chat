@@ -25,13 +25,9 @@ const App: React.FC = () => {
   const currentId = location.pathname.startsWith('/c/') ? location.pathname.split('/')[2] : null;
 
   // A manual key that only changes when the user clicks the sidebar, 
-  // explicitly preventing unmounts when the URL formalizes during streaming.
-  const [routeKey, setRouteKey] = useState<string>(currentId || 'new');
-
   // Initial load of history is handled automatically by useChatHistoryList hook
 
   const handleSelectChat = (id: string | null) => {
-    setRouteKey(id || `new-${Date.now()}`);
     if (id) {
       navigate(`/c/${id}`);
     } else {
@@ -49,7 +45,6 @@ const App: React.FC = () => {
       deleteChatMutation.mutate(chatToDelete, {
         onSuccess: () => {
           if (currentId === chatToDelete) {
-            setRouteKey(`new-${Date.now()}`);
             navigate('/');
           }
         }
@@ -74,7 +69,6 @@ const App: React.FC = () => {
           onDeleteChat={handleDeleteRequest}
         />
         <Box
-          key={routeKey}
           sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
         >
           <Routes>

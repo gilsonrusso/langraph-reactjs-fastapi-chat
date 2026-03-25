@@ -53,13 +53,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           sx={{
             borderRadius: '12px',
             textTransform: 'none',
-            py: 1,
-            color: '#444',
-            borderColor: '#ddd',
-            '&:hover': {
-              backgroundColor: '#eee',
-              borderColor: '#ccc',
-            },
           }}
         >
           Nova conversa

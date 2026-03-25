@@ -82,10 +82,10 @@ const ChatRouteReady: React.FC<{
 
       return {
         id: (msg.id as string) || `msg-${idx}`,
-        role: (msg.role === 'user' ? 'user' : hasToolCall && !content ? 'tool' : 'assistant') as Role,
+        role: (msg.role === 'user' || (msg as any).role === 'tool' ? (msg as any).role : hasToolCall && !content ? 'tool' : 'assistant') as Role,
         content: content || '',
       };
-    });
+    }).filter(msg => msg.content.trim() !== '' || msg.role !== 'assistant');
   }, [tanstackMessages]);
 
   return (
@@ -111,12 +111,25 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
   const location = useLocation();
   const idFromUrl = location.pathname.startsWith('/c/') ? location.pathname.split('/')[2] : undefined;
 
-  const [activeId] = useState(() => idFromUrl || uuidv4());
+  const [activeId, setActiveId] = useState(() => idFromUrl || uuidv4());
+  
+  // Sync activeId with URL natural navigations safely!
+  useEffect(() => {
+    if (idFromUrl) {
+      if (idFromUrl !== activeId) {
+        setActiveId(idFromUrl);
+      }
+    } else {
+      setActiveId(uuidv4());
+    }
+  }, [idFromUrl]);
+
   const isNewChatUrl = !idFromUrl;
 
-  const { data: msgs, isLoading } = useChatDetail(idFromUrl);
-  // Only stall rendering if we came with an explicit URL ID that needs verification
-  const isInitializing = !!idFromUrl && isLoading;
+  const shouldFetch = !!idFromUrl && idFromUrl === activeId;
+  const { data: msgs, isLoading } = useChatDetail(shouldFetch ? activeId : undefined);
+  
+  const isInitializing = shouldFetch && isLoading;
 
   const initialMsgs = useMemo(() => {
     if (!msgs) return [];
@@ -147,6 +160,7 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
 
   return (
     <ChatRouteReady
+      key={activeId}
       id={activeId}
       initialMsgs={initialMsgs}
       onHistoryUpdate={onHistoryUpdate}
