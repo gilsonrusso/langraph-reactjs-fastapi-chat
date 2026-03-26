@@ -73,7 +73,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ messages, onSendMessage, 
           </Box>
         ) : (
           messages.map((msg, index) => (
-            <ChatMessage key={index} role={msg.role} content={msg.content} />
+            <ChatMessage key={index} role={msg.role} content={msg.content} parts={msg.parts} metadata={msg.metadata} />
           ))
         )}
 

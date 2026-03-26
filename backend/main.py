@@ -20,6 +20,20 @@ from pydantic import BaseModel
 
 DB_NAME = "checkpoints.sqlite"
 
+from langchain.tools import tool
+
+@tool
+def get_weather(location: str) -> dict:
+    """Retorna a previsão do tempo atual para uma localização específica."""
+    # Mock data para o exemplo de Generative UI
+    return {
+        "temperature": 25,
+        "conditions": "Ensolarado com algumas nuvens",
+        "humidity": 60,
+        "wind_speed": 15,
+        "feels_like": 27
+    }
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -30,8 +44,8 @@ async def lifespan(app: FastAPI):
     """
     # Startup: Initialize the async checkpointer
     async with AsyncSqliteSaver.from_conn_string(DB_NAME) as saver:
-        # Initialize the search tool
-        tools = [TavilySearchResults(max_results=2)]
+        # Initialize the tools
+        tools = [TavilySearchResults(max_results=2), get_weather]
         
         # Create the agent with the checkpointer
         agent = create_agent(
@@ -119,10 +133,30 @@ async def stream_agui_events(agent, message_text: str, thread_id: str) -> AsyncI
                 tool_call_id = event.get("run_id", "unknown_id")
                 input_data = event["data"].get("input", {})
                 
-                # O backend só precisa informar ao frontend que a ferramenta terminou.
-                # O resultado bruto (milhares de caracteres de pesquisa) polui o SSE e
-                # quebra o renderizador Markdown do frontend.
-                yield f"data: {json.dumps({'type': 'TOOL_CALL_END', 'toolCallId': tool_call_id, 'toolName': name, 'input': input_data, 'result': 'Ferramenta concluida'})}\n\n"
+                # Se for UI gerativa (get_weather), o frontend precisa do resultado (output) JSON
+                if name == "get_weather":
+                    output = event["data"].get("output")
+                    output_data = {}
+                    
+                    # O LangChain 0.2+ frequentemente retorna objetos 'ToolMessage' aqui
+                    if hasattr(output, "content"):
+                        raw_content = output.content
+                        if isinstance(raw_content, str):
+                            import ast
+                            try:
+                                # Tenta avaliar a string do LangChain em dict Python para converter perfeitamente no JSON puro p/ React
+                                output_data = ast.literal_eval(raw_content)
+                            except Exception:
+                                output_data = raw_content
+                        else:
+                            output_data = raw_content
+                    else:
+                        output_data = output
+                        
+                    yield f"data: {json.dumps({'type': 'TOOL_CALL_END', 'toolCallId': tool_call_id, 'toolName': name, 'input': input_data, 'result': output_data})}\n\n"
+                else:
+                    # Para pesquisas massivas (Tavily), evita poluir o SSE com milhares de caracteres
+                    yield f"data: {json.dumps({'type': 'TOOL_CALL_END', 'toolCallId': tool_call_id, 'toolName': name, 'input': input_data, 'result': 'Ferramenta concluida'})}\n\n"
 
         yield f"data: {json.dumps({'type': 'checkpoint', 'checkpoint_id': thread_id})}\n\n"
     except Exception as e:

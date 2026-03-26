@@ -91,8 +91,18 @@ const ChatRouteReady: React.FC<{
         id: (msg.id as string) || `msg-${idx}`,
         role: (msg.role === 'user' || (msg as any).role === 'tool' ? (msg as any).role : hasToolCall && !content ? 'tool' : 'assistant') as Role,
         content: content || '',
+        parts: msg.parts || [],
+        metadata: (msg as any).metadata
       };
-    }).filter(msg => msg.content.trim() !== '' || msg.role !== 'assistant');
+    }).filter(msg => {
+       const isAssistant = msg.role === 'assistant';
+       const hasText = msg.content.trim() !== '';
+       const hasTools = msg.parts && Array.isArray(msg.parts) && msg.parts.some(p => p.type === 'tool-call');
+       
+       if (!isAssistant) return hasText;
+       // Permite Assistant message ser renderizada se tiver texto OU tiver chamada de ferramenta (mesmo sem texto)
+       return hasText || hasTools;
+    });
   }, [tanstackMessages]);
 
   return (

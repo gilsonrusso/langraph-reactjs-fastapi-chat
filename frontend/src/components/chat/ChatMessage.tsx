@@ -5,16 +5,18 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { Avatar, Box, Link, Paper, Typography } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import WeatherCard from './WeatherCard';
 
 export interface MessageProps {
   role: 'user' | 'assistant' | 'tool';
   content: string;
+  parts?: any[];
   metadata?: {
     urls?: string[];
   };
 }
 
-const ChatMessage: React.FC<MessageProps> = ({ role, content, metadata }) => {
+const ChatMessage: React.FC<MessageProps> = ({ role, content, parts, metadata }) => {
   const isAssistant = role === 'assistant';
   const isTool = role === 'tool';
 
@@ -93,19 +95,48 @@ const ChatMessage: React.FC<MessageProps> = ({ role, content, metadata }) => {
             }
           }}
         >
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              p: ({ children }) => (
-                <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
-                  {children}
-                </Typography>
-              ),
-              // Support additional overrides if needed
-            }}
-          >
-            {content}
-          </ReactMarkdown>
+          {content && (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                p: ({ children }) => (
+                  <Typography variant="body1" sx={{ lineHeight: 1.6 }}>
+                    {children}
+                  </Typography>
+                ),
+                // Support additional overrides if needed
+              }}
+            >
+              {content}
+            </ReactMarkdown>
+          )}
+
+          {/* Interface Gerativa (Generative UI) das Ferramentas */}
+          {isAssistant && parts && parts.map((part, index) => {
+            if (part.type === 'tool-call' || part.type === 'tool-invocation') {
+              const name = part.name || part.toolName || '';
+              if (name === 'get_weather') {
+                 // No TanStack AI React, o input parseado fica em 'part.input' e a string crua em 'part.arguments'
+                 let argsObj = part.input || part.arguments;
+                 if (typeof argsObj === 'string') {
+                    try { argsObj = JSON.parse(argsObj); } catch(e) {}
+                 }
+                 
+                 // No TanStack AI, o resultado executado é mapeado para 'part.output'
+                 let resultObj = part.output;
+                 if (typeof resultObj === 'string') {
+                    try { resultObj = JSON.parse(resultObj); } catch(e) {}
+                 }
+                 
+                 return (
+                   <Box key={index} sx={{ mt: content ? 2 : 0 }}>
+                     <WeatherCard args={argsObj} result={resultObj} isLoading={!part.output} />
+                   </Box>
+                 );
+              }
+            }
+            return null;
+          })}
 
           {isAssistant && metadata?.urls && metadata.urls.length > 0 && (
             <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
