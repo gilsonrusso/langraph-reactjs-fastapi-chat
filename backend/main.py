@@ -147,6 +147,65 @@ async def get_history():
     except:
         return []
 
+def _extract_msg_text_parts(content) -> list:
+    """Extrai as partes de texto de um conteúdo de mensagem do LangChain."""
+    if isinstance(content, str) and content:
+        return [{"type": "text", "content": content}]
+    
+    parts = []
+    if isinstance(content, list):
+        for c in content:
+            if isinstance(c, str):
+                parts.append({"type": "text", "content": c})
+            elif isinstance(c, dict) and "text" in c:
+                parts.append({"type": "text", "content": c["text"]})
+    return parts
+
+def _convert_msg_to_tanstack(msg) -> dict:
+    """Converte uma mensagem do LangChain para o formato esperado pelo TanStack UI."""
+    role_map = {"human": "user", "ai": "assistant", "tool": "tool"}
+    role = role_map.get(msg.type, "assistant")
+    
+    parts = _extract_msg_text_parts(msg.content)
+    
+    if hasattr(msg, "tool_calls") and msg.tool_calls:
+        for tc in msg.tool_calls:
+            parts.append({
+                "type": "tool-call",
+                "name": tc.get("name"),
+                "toolCallId": tc.get("id"),
+                "args": tc.get("args")
+            })
+            
+    if msg.type == "tool":
+        parts.append({
+            "type": "tool-result",
+            "name": getattr(msg, "name", ""),
+            "toolCallId": getattr(msg, "tool_call_id", ""),
+            "result": msg.content
+        })
+        
+    return {
+        "id": getattr(msg, "id", str(uuid.uuid4())),
+        "role": role,
+        "parts": parts
+    }
+
+@app.get("/api/chat/{thread_id}")
+async def get_chat_history(thread_id: str, fast_request: Request):
+    """Retorna o histórico de mensagens de uma conversa a partir do LangGraph."""
+    agent = fast_request.app.state.agent
+    try:
+        state = await agent.aget_state({"configurable": {"thread_id": thread_id}})
+        if not state or not hasattr(state, 'values') or not state.values:
+            return {"messages": []}
+            
+        messages = [_convert_msg_to_tanstack(msg) for msg in state.values.get("messages", [])]
+        return {"messages": messages}
+    except Exception as e:
+        print(f"Error fetching history: {e}")
+        return {"messages": []}
+
 @app.delete("/api/chat/{thread_id}")
 async def delete_chat(thread_id: str):
     """Deleta o histórico de uma conversa."""
