@@ -8,7 +8,7 @@ from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.sse import EventSourceResponse, ServerSentEvent
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from langgraph.prebuilt import create_react_agent
@@ -49,11 +49,11 @@ def _extract_stream_text(content) -> str:
         return "".join(c.get("text", "") if isinstance(c, dict) else str(c) for c in content)
     return str(content)
 
-def _build_sse_event(type_: str, **kwargs) -> ServerSentEvent:
+def _build_sse_event(type_: str, **kwargs) -> str:
     """Constrói um ServerSentEvent com tipo, timestamp e dados adicionais."""
     data = {"type": type_, "timestamp": int(time.time() * 1000)}
     data.update(kwargs)
-    return ServerSentEvent(data=data)
+    return f"data: {json.dumps(data)}\n\n"
 
 async def stream_chat(agent, message_text: str, thread_id: str) -> AsyncIterable[str]:
     config = {"configurable": {"thread_id": thread_id}}
@@ -120,7 +120,7 @@ app.add_middleware(
 
 # --- Endpoints ---
 
-@app.post("/api/chat", response_class=EventSourceResponse)
+@app.post("/api/chat")
 async def chat(request: ChatRequest, fast_request: Request):
     if not request.messages:
         raise HTTPException(status_code=400, detail="Sem mensagens")
@@ -133,8 +133,10 @@ async def chat(request: ChatRequest, fast_request: Request):
     thread_id = request.checkpoint_id or str(uuid.uuid4())
     agent = fast_request.app.state.agent
 
-    async for event in stream_chat(agent, message_text, thread_id):
-        yield event
+    return StreamingResponse(
+        stream_chat(agent, message_text, thread_id),
+        media_type="text/event-stream"
+    )
 
 @app.get("/api/history")
 async def get_history():
