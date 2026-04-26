@@ -21,6 +21,7 @@ def get_llm():
                 google_api_key=GEMINI_API_KEY,
                 temperature=0.3,
                 max_retries=5,
+                streaming=True,
                 convert_system_message_to_human=True,  # Sometimes needed for older models, but harmless
             )
         except ImportError:

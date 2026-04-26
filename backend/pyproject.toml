@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.10.3",
     "langgraph-checkpoint-sqlite>=3.0.3",
     "aiosqlite>=0.22.1",
+    "langchain-tavily>=0.2.18",
 ]
 [tool.fastapi]
 entrypoint = "main:app"
