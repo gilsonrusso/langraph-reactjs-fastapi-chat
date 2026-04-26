@@ -8,7 +8,7 @@ export interface MessagePart {
 export type Role = 'user' | 'assistant' | 'tool';
 
 export interface Message {
-  id?: string;
+  id: string;
   role: Role;
   content?: string;
   parts?: MessagePart[];
