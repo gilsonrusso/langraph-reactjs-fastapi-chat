@@ -147,6 +147,18 @@ async def get_history():
     except:
         return []
 
+@app.delete("/api/chat/{thread_id}")
+async def delete_chat(thread_id: str):
+    """Deleta o histórico de uma conversa."""
+    try:
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("DELETE FROM checkpoints WHERE thread_id = ?", (thread_id,))
+            await db.execute("DELETE FROM writes WHERE thread_id = ?", (thread_id,))
+            await db.commit()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
