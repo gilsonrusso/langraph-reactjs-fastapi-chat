@@ -7,6 +7,8 @@ import {
   IconButton,
   Paper,
   CircularProgress,
+  Snackbar,
+  Alert,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
@@ -37,9 +39,24 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
     [threadId],
   );
 
-  const { messages, sendMessage, isLoading, setMessages } = useChat({
+  const { messages, sendMessage, isLoading, setMessages, error } = useChat({
     connection,
   });
+
+  const [errorOpen, setErrorOpen] = useState(false);
+
+  useEffect(() => {
+    if (error) {
+      setErrorOpen(true);
+    }
+  }, [error]);
+
+  const handleErrorClose = (event?: React.SyntheticEvent | Event, reason?: string) => {
+    if (reason === "clickaway") {
+      return;
+    }
+    setErrorOpen(false);
+  };
 
   useEffect(() => {
     if (threadId) {
@@ -328,6 +345,24 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
           </Box>
         </>
       )}
+
+      {/* Snackbar para Erros */}
+      <Snackbar
+        open={errorOpen}
+        autoHideDuration={6000}
+        onClose={handleErrorClose}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert
+          onClose={handleErrorClose}
+          severity="error"
+          sx={{ width: "100%" }}
+        >
+          {error?.message?.includes("503") 
+            ? "O modelo está sobrecarregado no momento. Por favor, tente novamente mais tarde." 
+            : `Ocorreu um erro: ${error?.message || "Erro desconhecido"}`}
+        </Alert>
+      </Snackbar>
     </Stack>
   );
 };
