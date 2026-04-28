@@ -4,8 +4,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from langchain.agents import create_agent
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from config import settings
-from logger import logger
 
 from agents import (
     SUPERVISOR_PROMPT,
@@ -13,10 +11,11 @@ from agents import (
     manage_email,
     schedule_event,
 )
-from config import DB_NAME
+from config import DB_NAME, settings
 
 # Módulos locais
 from llm import get_llm
+from logger import logger
 from routes import router
 from tools import get_weather
 

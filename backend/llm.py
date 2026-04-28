@@ -1,6 +1,7 @@
 from config import settings
 from logger import logger
 
+
 def get_llm():
     """
     Returns the configured LLM instance.
@@ -22,6 +23,6 @@ def get_llm():
         except ImportError as e:
             logger.error("langchain_google_genai not installed.")
             raise e
-    
+
     logger.warning("GEMINI_API_KEY not found in settings.")
     return None
