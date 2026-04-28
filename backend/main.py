@@ -15,6 +15,10 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langchain_core.messages import HumanMessage
 from langchain.tools import tool
+from langchain.agents.middleware import HumanInTheLoopMiddleware 
+from langgraph.checkpoint.memory import InMemorySaver 
+
+from langchain.agents import create_agent
 
 from langfuse.langchain import CallbackHandler
 
@@ -41,6 +45,122 @@ def get_weather(location: str) -> str:
     """Retorna a previsão do tempo para uma localização."""
     return f"O tempo em {location} está ensolarado com 25°C."
 
+@tool
+def create_calendar_event(
+    title: str,
+    start_time: str,
+    end_time: str,
+    attendees: list[str],
+    location: str = ""
+) -> str:
+    """Create a calendar event. Requires exact ISO datetime format."""
+    # Stub: In practice, this would call Google Calendar API, Outook, etc...
+    return f"Event created: {title} from {start_time} to {end_time} with {len(attendees)} attendees."
+
+@tool
+def send_email(
+    to: list[str], #email addresses
+    subject: str,
+    boddy: str,
+    cc: list[str] = []
+) -> str:
+    """Send an email via email API. Requires properly formated addresses."""
+    # Stub: In practice, this would call SendGrid, Gmail API, etc.
+
+@tool
+def get_available_time_slots(
+    attendees: list[str],
+    date: str,  # ISO format: "2024-01-15"
+    duration_minutes: int
+) -> list[str]:
+    """Check calendar availability for given attendees on a specific date."""
+    # Stub: In practice, this would query calendar APIs
+    return ["09:00", "14:00", "16:00"]  
+
+
+# --- Agentes e Ferramentas ---
+
+# 1. Sub-agentes (Especialistas)
+CALENDAR_AGENT_PROMPT = (
+    "You are a calendar scheduling assistant. "
+    "Parse natural language scheduling requests (e.g., 'next Tuesday at 2pm') "
+    "into proper ISO datetime formats. "
+    "Use get_available_time_slots to check availability when needed. "
+    "If there is no suitable time slot, stop and confirm unavailability in your response. "
+    "Use create_calendar_event to schedule events. "
+    "Always confirm what was scheduled in your final response."
+)
+
+EMAIL_AGENT_PROMPT = (
+    "You are an email assistant. "
+    "Compose professional emails based on natural language requests. "
+    "Extract recipient information and craft appropriate subject lines and body text. "
+    "Use send_email to send the message. "
+    "Always confirm what was sent in your final response."
+)
+
+# Nota: Criamos os agentes aqui, mas eles serão usados dentro das ferramentas.
+def create_sub_agents():
+    llm = get_llm()
+    
+    calendar_agent = create_agent(
+        llm,
+        tools=[create_calendar_event, get_available_time_slots],
+        system_prompt=CALENDAR_AGENT_PROMPT,
+        middleware=[
+            HumanInTheLoopMiddleware(
+                interrupt_on={"create_calendar_event": True},
+                description_prefix="Calendar event pending approval",
+            ),
+        ],
+    )
+
+    email_agent = create_agent(
+        llm,
+        tools=[send_email],
+        system_prompt=EMAIL_AGENT_PROMPT,
+        middleware=[
+            HumanInTheLoopMiddleware(
+                interrupt_on={"send_email": True},
+                description_prefix="Outbound email pending approval",
+            ),
+        ],
+    )
+    
+    return calendar_agent, email_agent
+
+# Precisamos instanciar os sub-agentes para que as ferramentas possam referenciá-los.
+# Para evitar problemas de escopo no lifespan, vamos definir as ferramentas aqui
+# e capturar os agentes via closure ou definir depois.
+_calendar_agent = None
+_email_agent = None
+
+@tool
+async def schedule_event(request: str) -> str:
+    """Schedule calendar events using natural language.
+    Use this when the user wants to create, modify, or check calendar appointments.
+    """
+    if _calendar_agent is None:
+        return "Erro: Agente de calendário não inicializado."
+    result = await _calendar_agent.ainvoke({"messages": [HumanMessage(content=request)]})
+    return result["messages"][-1].content
+
+@tool
+async def manage_email(request: str) -> str:
+    """Send emails using natural language.
+    Use this when the user wants to send notifications, reminders, or any email communication.
+    """
+    if _email_agent is None:
+        return "Erro: Agente de e-mail não inicializado."
+    result = await _email_agent.ainvoke({"messages": [HumanMessage(content=request)]})
+    return result["messages"][-1].content
+
+SUPERVISOR_PROMPT = (
+    "You are a helpful personal assistant. "
+    "You can schedule calendar events and send emails. "
+    "Break down user requests into appropriate tool calls and coordinate the results. "
+    "When a request involves multiple actions, use multiple tools in sequence."
+)
 
 # --- Modelos Pydantic (Minimalistas) ---
 class MessagePart(BaseModel):
@@ -131,10 +251,19 @@ async def stream_chat(agent, message_text: str, thread_id: str) -> AsyncIterable
 # --- Ciclo de Vida e Agente ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _calendar_agent, _email_agent
+    
     # Setup da memória (SQLite)
     async with AsyncSqliteSaver.from_conn_string(DB_NAME) as saver:
-        app.state.agent = create_react_agent(
-            get_llm(), tools=[get_weather], checkpointer=saver
+        # 1. Inicializa os sub-agentes
+        _calendar_agent, _email_agent = create_sub_agents()
+        
+        # 2. Inicializa o supervisor com o checkpointer persistente
+        app.state.agent = create_agent(
+            get_llm(),
+            tools=[schedule_event, manage_email, get_weather], # Incluímos o clima no supervisor também
+            system_prompt=SUPERVISOR_PROMPT,
+            checkpointer=saver,
         )
         yield
 
