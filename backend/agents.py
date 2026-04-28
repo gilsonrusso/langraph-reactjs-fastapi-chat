@@ -1,7 +1,8 @@
 from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware
-from langchain_core.messages import HumanMessage
 from langchain.tools import tool
+from langchain_core.messages import HumanMessage
+
 from llm import get_llm
 from tools import create_calendar_event, get_available_time_slots, send_email
 
@@ -12,7 +13,8 @@ CALENDAR_AGENT_PROMPT = (
     "Parse natural language scheduling requests (e.g., 'next Tuesday at 2pm') "
     "into proper ISO datetime formats. "
     "Use get_available_time_slots to check availability when needed. "
-    "If there is no suitable time slot, stop and confirm unavailability in your response. "
+    "If there is no suitable time slot, stop and confirm "
+    "unavailability in your response. "
     "Use create_calendar_event to schedule events. "
     "Always confirm what was scheduled in your final response."
 )
@@ -37,10 +39,11 @@ SUPERVISOR_PROMPT = (
 _calendar_agent = None
 _email_agent = None
 
+
 def create_sub_agents():
     """Fábrica para criar os sub-agentes especialistas."""
     llm = get_llm()
-    
+
     calendar_agent = create_agent(
         llm,
         tools=[create_calendar_event, get_available_time_slots],
@@ -64,8 +67,9 @@ def create_sub_agents():
             ),
         ],
     )
-    
+
     return calendar_agent, email_agent
+
 
 def initialize_global_agents():
     """Inicializa os agentes globais para uso nas ferramentas de orquestração."""
@@ -76,6 +80,7 @@ def initialize_global_agents():
 
 # --- Ferramentas de Orquestração ---
 
+
 @tool
 async def schedule_event(request: str) -> str:
     """Schedule calendar events using natural language.
@@ -83,13 +88,17 @@ async def schedule_event(request: str) -> str:
     """
     if _calendar_agent is None:
         return "Erro: Agente de calendário não inicializado."
-    result = await _calendar_agent.ainvoke({"messages": [HumanMessage(content=request)]})
+    result = await _calendar_agent.ainvoke(
+        {"messages": [HumanMessage(content=request)]}
+    )
     return result["messages"][-1].content
+
 
 @tool
 async def manage_email(request: str) -> str:
     """Send emails using natural language.
-    Use this when the user wants to send notifications, reminders, or any email communication.
+    Use this when the user wants to send notifications, reminders,
+    or any email communication.
     """
     if _email_agent is None:
         return "Erro: Agente de e-mail não inicializado."

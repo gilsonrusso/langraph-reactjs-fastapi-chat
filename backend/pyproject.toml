@@ -18,3 +18,23 @@ dependencies = [
 ]
 [tool.fastapi]
 entrypoint = "main:app"
+
+[tool.ruff]
+# Configuração base do Ruff
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+# Habilita regras recomendadas
+select = ["E", "F", "I", "N", "UP", "B"]
+ignore = []
+
+[tool.ruff.format]
+# Configurações de formatação (estilo Black)
+quote-style = "double"
+indent-style = "space"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.12",
+]

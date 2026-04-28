@@ -1,14 +1,16 @@
-from typing import List, Optional
 from pydantic import BaseModel
+
 
 class MessagePart(BaseModel):
     type: str
-    content: Optional[str] = None
+    content: str | None = None
+
 
 class Message(BaseModel):
     role: str
-    parts: List[MessagePart]
+    parts: list[MessagePart]
+
 
 class ChatRequest(BaseModel):
-    messages: List[Message]
-    checkpoint_id: Optional[str] = None
+    messages: list[Message]
+    checkpoint_id: str | None = None

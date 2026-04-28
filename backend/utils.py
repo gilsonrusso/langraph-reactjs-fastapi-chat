@@ -1,6 +1,7 @@
-import time
 import json
+import time
 import uuid
+
 
 def _extract_stream_text(content) -> str:
     """Extrai texto de um chunk, lidando com formatos de lista ou string."""
@@ -12,11 +13,13 @@ def _extract_stream_text(content) -> str:
         )
     return str(content)
 
+
 def _build_sse_event(type_: str, **kwargs) -> str:
     """Constrói um ServerSentEvent com tipo, timestamp e dados adicionais."""
     data = {"type": type_, "timestamp": int(time.time() * 1000)}
     data.update(kwargs)
     return f"data: {json.dumps(data)}\n\n"
+
 
 def _extract_msg_text_parts(content) -> list:
     """Extrai as partes de texto de um conteúdo de mensagem do LangChain."""
@@ -31,6 +34,7 @@ def _extract_msg_text_parts(content) -> list:
             elif isinstance(c, dict) and "text" in c:
                 parts.append({"type": "text", "content": c["text"]})
     return parts
+
 
 def _convert_msg_to_tanstack(msg) -> dict:
     """Converte uma mensagem do LangChain para o formato esperado pelo TanStack UI."""

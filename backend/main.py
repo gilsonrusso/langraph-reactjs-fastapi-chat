@@ -1,20 +1,23 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from langchain.agents import create_agent
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-# Módulos locais
-from llm import get_llm
-from config import DB_NAME
 from agents import (
     SUPERVISOR_PROMPT,
     initialize_global_agents,
+    manage_email,
     schedule_event,
-    manage_email
 )
-from tools import get_weather
+from config import DB_NAME
+
+# Módulos locais
+from llm import get_llm
 from routes import router
-from langchain.agents import create_agent
+from tools import get_weather
+
 
 # --- Ciclo de Vida ---
 @asynccontextmanager
@@ -23,7 +26,7 @@ async def lifespan(app: FastAPI):
     async with AsyncSqliteSaver.from_conn_string(DB_NAME) as saver:
         # 1. Inicializa os sub-agentes globais para as ferramentas
         initialize_global_agents()
-        
+
         # 2. Inicializa o supervisor como agente principal da aplicação
         app.state.agent = create_agent(
             get_llm(),
@@ -50,4 +53,5 @@ app.include_router(router)
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="127.0.0.1", port=8000)

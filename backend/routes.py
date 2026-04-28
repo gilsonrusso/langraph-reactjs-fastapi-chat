@@ -1,16 +1,21 @@
 import uuid
+
 import aiosqlite
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from schemas import ChatRequest
-from utils import _convert_msg_to_tanstack
-from services import stream_chat
 from config import DB_NAME
+from schemas import ChatRequest
+from services import stream_chat
+from utils import _convert_msg_to_tanstack
 
 router = APIRouter(prefix="/api")
 
-@router.post("/chat", responses={400: {"description": "Requisição inválida: nenhuma mensagem enviada"}})
+
+@router.post(
+    "/chat",
+    responses={400: {"description": "Requisição inválida: nenhuma mensagem enviada"}},
+)
 async def chat(request: ChatRequest, fast_request: Request):
     if not request.messages:
         raise HTTPException(status_code=400, detail="Sem mensagens")
@@ -25,6 +30,7 @@ async def chat(request: ChatRequest, fast_request: Request):
         stream_chat(agent, message_text, thread_id), media_type="text/event-stream"
     )
 
+
 @router.get("/history")
 async def get_history():
     """Lista IDs de conversas salvas."""
@@ -38,6 +44,7 @@ async def get_history():
     except Exception as e:
         print(f"Error fetching threads: {e}")
         return []
+
 
 @router.get("/chat/{thread_id}")
 async def get_chat_history(thread_id: str, fast_request: Request):
@@ -56,7 +63,11 @@ async def get_chat_history(thread_id: str, fast_request: Request):
         print(f"Error fetching history: {e}")
         return {"messages": []}
 
-@router.delete("/chat/{thread_id}", responses={500: {"description": "Erro interno ao tentar deletar o histórico"}})
+
+@router.delete(
+    "/chat/{thread_id}",
+    responses={500: {"description": "Erro interno ao tentar deletar o histórico"}},
+)
 async def delete_chat(thread_id: str):
     """Deleta o histórico de uma conversa."""
     try:
@@ -68,4 +79,4 @@ async def delete_chat(thread_id: str):
             await db.commit()
         return {"status": "success"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

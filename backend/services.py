@@ -1,8 +1,11 @@
 import uuid
-from typing import AsyncIterable
+from collections.abc import AsyncIterable
+
 from langchain_core.messages import HumanMessage
-from utils import _extract_stream_text, _build_sse_event
+
 from config import langfuse_handler
+from utils import _build_sse_event, _extract_stream_text
+
 
 async def stream_chat(agent, message_text: str, thread_id: str) -> AsyncIterable[str]:
     config = {"configurable": {"thread_id": thread_id}, "callbacks": [langfuse_handler]}

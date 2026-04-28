@@ -1,4 +1,5 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,7 +23,8 @@ def get_llm():
                 temperature=0.3,
                 max_retries=5,
                 streaming=True,
-                convert_system_message_to_human=True,  # Sometimes needed for older models, but harmless
+                convert_system_message_to_human=True,
+                # Sometimes needed for older models, but harmless
             )
         except ImportError:
             print("WARNING: langchain_google_genai not installed. Fallback to Ollama?")

@@ -42,5 +42,13 @@ O backend utiliza uma arquitetura de múltiplos agentes orquestrados por um **Su
    ```
    *Nota: O servidor agora roda por padrão em `127.0.0.1` por segurança.*
 
+## 🛠 Qualidade de Código (Lint & Format)
+
+Utilizamos o **Ruff** para garantir que o código esteja limpo e siga as melhores práticas:
+
+- **Checagem de erros:** `uv run ruff check .`
+- **Auto-correção:** `uv run ruff check --fix .`
+- **Formatação:** `uv run ruff format .`
+
 ---
 Este backend foi projetado para ser escalável, modular e resiliente.
