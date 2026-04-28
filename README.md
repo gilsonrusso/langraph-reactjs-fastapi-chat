@@ -18,6 +18,8 @@ O repositório é dividido em duas partes principais:
 ### Backend
 - **LangGraph & LangChain:** Orquestração de grafos de estado e agentes.
 - **FastAPI:** Framework web assíncrono de alta performance.
+- **Pydantic Settings:** Validação rigorosa de variáveis de ambiente.
+- **Rich Logging:** Logs estruturados e visualmente amigáveis.
 - **SQLite:** Persistência de memória (checkpoints) das conversas.
 - **Langfuse:** Observabilidade e rastreamento de traces de IA.
 

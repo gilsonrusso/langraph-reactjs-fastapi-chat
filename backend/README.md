@@ -6,13 +6,19 @@ Este diretório contém o servidor backend responsável por gerenciar a lógica 
 
 Recentemente, o backend foi refatorado para uma estrutura modular de nível profissional, separando as preocupações em arquivos especializados:
 
-- **`main.py`**: Ponto de entrada, configuração do FastAPI e ciclo de vida (Lifespan).
+- **`config.py`**: Gerenciamento de configurações usando **Pydantic Settings** com validação automática.
+- **`logger.py`**: Sistema de logs centralizado usando **Rich** para saída estruturada.
 - **`routes.py`**: Definição de todos os endpoints da API (`/chat`, `/history`, etc.) usando `APIRouter`.
 - **`agents.py`**: Fábrica de agentes, prompts do sistema e definição do **Supervisor**.
 - **`services.py`**: Lógica de negócio e processamento de streaming de eventos.
 - **`tools.py`**: Definição das ferramentas base (clima, calendário, e-mail).
 - **`schemas.py`**: Modelos Pydantic para validação de dados.
 - **`utils.py`**: Funções utilitárias de conversão e formatação.
+
+### Por que usamos Lifespan?
+O FastAPI utiliza o gerenciador de contexto `lifespan` para lidar com a inicialização e o encerramento da aplicação. No nosso caso, ele é crucial para:
+- **Gerenciamento de Recursos:** Garante que a conexão com o banco de dados SQLite (`AsyncSqliteSaver`) seja aberta e fechada corretamente.
+- **Estado Global:** Inicializa os agentes e os armazena no `app.state`, tornando-os acessíveis em todas as rotas de forma eficiente e segura entre threads.
 
 ## 🤖 Padrão de Supervisor
 

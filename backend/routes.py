@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from config import DB_NAME
+from logger import logger
 from schemas import ChatRequest
 from services import stream_chat
 from utils import _convert_msg_to_tanstack
@@ -42,7 +43,7 @@ async def get_history():
                 threads = await cursor.fetchall()
                 return [{"id": t[0]} for t in threads if t[0]]
     except Exception as e:
-        print(f"Error fetching threads: {e}")
+        logger.error(f"Error fetching threads: {e}")
         return []
 
 
@@ -60,7 +61,7 @@ async def get_chat_history(thread_id: str, fast_request: Request):
         ]
         return {"messages": messages}
     except Exception as e:
-        print(f"Error fetching history: {e}")
+        logger.error(f"Error fetching history for thread {thread_id}: {e}")
         return {"messages": []}
 
 
