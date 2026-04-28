@@ -10,7 +10,7 @@ from config import DB_NAME
 
 router = APIRouter(prefix="/api")
 
-@router.post("/chat")
+@router.post("/chat", responses={400: {"description": "Requisição inválida: nenhuma mensagem enviada"}})
 async def chat(request: ChatRequest, fast_request: Request):
     if not request.messages:
         raise HTTPException(status_code=400, detail="Sem mensagens")
@@ -56,7 +56,7 @@ async def get_chat_history(thread_id: str, fast_request: Request):
         print(f"Error fetching history: {e}")
         return {"messages": []}
 
-@router.delete("/chat/{thread_id}")
+@router.delete("/chat/{thread_id}", responses={500: {"description": "Erro interno ao tentar deletar o histórico"}})
 async def delete_chat(thread_id: str):
     """Deleta o histórico de uma conversa."""
     try:
