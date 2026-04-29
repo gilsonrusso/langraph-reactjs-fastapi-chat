@@ -5,6 +5,7 @@ from langchain_core.messages import HumanMessage
 
 from config import langfuse_handler
 from utils import _build_sse_event, _extract_stream_text
+from rich import print
 
 
 async def stream_chat(agent, message_text: str, thread_id: str) -> AsyncIterable[str]:
@@ -17,9 +18,13 @@ async def stream_chat(agent, message_text: str, thread_id: str) -> AsyncIterable
 
     try:
         async for event in agent.astream_events(
-            {"messages": [HumanMessage(content=message_text)]}, config, version="v2"
+            {"messages": [HumanMessage(content=message_text)]},
+            config,
+            stream_mode=["updates", "custom"],
+            version="v2",
         ):
             kind = event["event"]
+            print(f"astream_events: {event}")
 
             if kind == "on_chat_model_stream":
                 text = _extract_stream_text(event["data"]["chunk"].content)

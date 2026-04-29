@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=(".env", "../.env"), env_file_encoding="utf-8", extra="ignore"
     )
 
     # API Keys & Models
@@ -32,8 +32,13 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Configuração do Langfuse
-os.environ["LANGFUSE_HOST"] = settings.LANGFUSE_HOST
-langfuse_handler = CallbackHandler()
+if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
+    os.environ["LANGFUSE_PUBLIC_KEY"] = settings.LANGFUSE_PUBLIC_KEY
+    os.environ["LANGFUSE_SECRET_KEY"] = settings.LANGFUSE_SECRET_KEY
+    os.environ["LANGFUSE_HOST"] = settings.LANGFUSE_HOST
+    langfuse_handler = CallbackHandler()
+else:
+    langfuse_handler = None
 
 # Exportamos para manter compatibilidade com o que já existe
 DB_NAME = settings.DB_NAME
