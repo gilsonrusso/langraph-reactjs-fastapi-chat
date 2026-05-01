@@ -1,0 +1,113 @@
+import uuid
+
+import aiosqlite
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
+
+from ..core.config import DB_NAME
+from ..core.logger import logger
+from ..schemas.schemas import ChatRequest
+from ..services.services import stream_chat
+from ..services.utils import _convert_msg_to_tanstack
+
+router = APIRouter(prefix="/api")
+
+
+@router.post(
+    "/chat",
+    responses={400: {"description": "Requisição inválida: nenhuma mensagem enviada"}},
+)
+async def chat(request: ChatRequest, fast_request: Request):
+    thread_id = request.checkpoint_id or str(uuid.uuid4())
+    agent = fast_request.app.state.agent
+
+    if request.decision:
+        # Se temos uma decisão, o message_text é opcional/ignorado
+        message_text = None
+    else:
+        if not request.messages:
+            raise HTTPException(status_code=400, detail="Sem mensagens")
+        last_msg = request.messages[-1]
+        # Extrair texto da última mensagem para o log e processamento inicial
+        message_text = "".join(p.content for p in last_msg.parts if p.type == "text" and p.content)
+
+    return StreamingResponse(
+        stream_chat(agent, message_text, thread_id, decision=request.decision),
+        media_type="text/event-stream"
+    )
+
+
+@router.get("/history")
+async def get_history():
+    """Lista IDs de conversas salvas."""
+    try:
+        async with aiosqlite.connect(DB_NAME) as db:
+            async with db.execute(
+                "SELECT DISTINCT thread_id FROM checkpoints"
+            ) as cursor:
+                threads = await cursor.fetchall()
+                return [{"id": t[0]} for t in threads if t[0]]
+    except Exception as e:
+        logger.error(f"Error fetching threads: {e}")
+        return []
+
+
+@router.get("/chat/{thread_id}")
+async def get_chat_history(thread_id: str, fast_request: Request):
+    """Retorna o histórico de mensagens de uma conversa."""
+    agent = fast_request.app.state.agent
+    try:
+        state = await agent.aget_state({"configurable": {"thread_id": thread_id}})
+        if not state or not hasattr(state, "values") or not state.values:
+            return {"messages": []}
+
+        messages = [
+            _convert_msg_to_tanstack(msg) for msg in state.values.get("messages", [])
+        ]
+
+        # Injetar o interrupt como uma "tool call" virtual se existir
+        if state.tasks:
+            for task in state.tasks:
+                if task.interrupts and messages:
+                    hitl_request = task.interrupts[0].value
+                    hitl_data = (
+                        hitl_request
+                        if isinstance(hitl_request, dict)
+                        else hitl_request.dict()
+                    )
+                    # Adicionar ao último assistant message
+                    # Procuramos a última mensagem do assistente para anexar o pedido de revisão
+                    for msg in reversed(messages):
+                        if msg["role"] == "assistant":
+                            msg["parts"].append(
+                                {
+                                    "type": "tool-call",
+                                    "name": "human_review",
+                                    "toolCallId": f"hitl-{uuid.uuid4()}",
+                                    "args": {"hitl_request": hitl_data},
+                                }
+                            )
+                            break
+
+        return {"messages": messages}
+    except Exception as e:
+        logger.error(f"Error fetching history for thread {thread_id}: {e}")
+        return {"messages": []}
+
+
+@router.delete(
+    "/chat/{thread_id}",
+    responses={500: {"description": "Erro interno ao tentar deletar o histórico"}},
+)
+async def delete_chat(thread_id: str):
+    """Deleta o histórico de uma conversa."""
+    try:
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute(
+                "DELETE FROM checkpoints WHERE thread_id = ?", (thread_id,)
+            )
+            await db.execute("DELETE FROM writes WHERE thread_id = ?", (thread_id,))
+            await db.commit()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
