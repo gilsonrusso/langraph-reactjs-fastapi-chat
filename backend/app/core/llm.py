@@ -1,5 +1,5 @@
-from config import settings
-from logger import logger
+from .config import settings
+from .logger import logger
 
 
 def get_llm():

@@ -17,9 +17,10 @@ dependencies = [
     "langfuse>=4.5.1",
     "pydantic-settings>=2.13.1",
     "rich>=14.3.3",
+    "fastmcp>=0.4.1",
 ]
 [tool.fastapi]
-entrypoint = "main:app"
+entrypoint = "app.main:app"
 
 [tool.ruff]
 # Configuração base do Ruff
