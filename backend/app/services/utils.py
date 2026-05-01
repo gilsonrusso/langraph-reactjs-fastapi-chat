@@ -41,7 +41,19 @@ def _convert_msg_to_tanstack(msg) -> dict:
     role_map = {"human": "user", "ai": "assistant", "tool": "tool"}
     role = role_map.get(msg.type, "assistant")
 
-    parts = _extract_msg_text_parts(msg.content)
+    parts = []
+
+    if msg.type == "tool":
+        parts.append(
+            {
+                "type": "tool-result",
+                "name": getattr(msg, "name", ""),
+                "toolCallId": getattr(msg, "tool_call_id", ""),
+                "result": msg.content,
+            }
+        )
+    else:
+        parts.extend(_extract_msg_text_parts(msg.content))
 
     if hasattr(msg, "tool_calls") and msg.tool_calls:
         for tc in msg.tool_calls:
@@ -53,15 +65,5 @@ def _convert_msg_to_tanstack(msg) -> dict:
                     "args": tc.get("args"),
                 }
             )
-
-    if msg.type == "tool":
-        parts.append(
-            {
-                "type": "tool-result",
-                "name": getattr(msg, "name", ""),
-                "toolCallId": getattr(msg, "tool_call_id", ""),
-                "result": msg.content,
-            }
-        )
 
     return {"id": getattr(msg, "id", str(uuid.uuid4())), "role": role, "parts": parts}
