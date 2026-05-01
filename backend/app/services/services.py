@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 
 from ..core.config import langfuse_handler
-from .utils import _build_sse_event
+from .utils import _build_sse_event, _extract_stream_text
 from ..core.logger import logger
 from ..schemas.schemas import Decision
 
@@ -26,6 +26,7 @@ async def stream_chat(
     yield logged_yield(_build_sse_event("TEXT_MESSAGE_START", messageId=msg_id, role="assistant"))
 
     state_next = False
+    in_tool_count = 0
     try:
         # Determine the input for astream_events
         if decision:
@@ -92,28 +93,55 @@ async def stream_chat(
                             )
 
             elif kind == "on_chat_model_stream":
-                content = event.get("data", {}).get("chunk", {}).content
+                # Filtro dinâmico: se estamos dentro de uma tool (ou seja, sub-agente rodando), ignoramos os chunks
+                if in_tool_count > 0:
+                    continue
+
+                content_raw = event.get("data", {}).get("chunk", {}).content
+                content = _extract_stream_text(content_raw)
+                
                 if content:
-                    yield logged_yield(_build_sse_event("TEXT_MESSAGE_CHUNK", messageId=msg_id, chunk=content))
+                    # TanStack AI v0.7+ AG-UI protocol
+                    yield logged_yield(_build_sse_event(
+                        "TEXT_MESSAGE_CONTENT", 
+                        messageId=msg_id, 
+                        delta=content
+                    ))
 
             elif kind == "on_tool_start":
+                in_tool_count += 1
                 tc_id = event.get("run_id", str(uuid.uuid4()))
                 tc_args = event.get("data", {}).get("input")
+                tool_name = event.get("name", "tool")
+                
+                # Emit TOOL_CALL_START
                 yield _build_sse_event(
                     "TOOL_CALL_START",
                     messageId=msg_id,
                     toolCallId=tc_id,
-                    toolName=event.get("name", "tool"),
-                    name=event.get("name", "tool"),
-                    args=json.dumps(tc_args) if tc_args else "{}",
-                    arguments=json.dumps(tc_args) if tc_args else "{}"
+                    toolName=tool_name
                 )
+                
+                # Emit TOOL_CALL_ARGS
+                args_json = json.dumps(tc_args) if tc_args else "{}"
                 yield _build_sse_event(
-                    "TOOL_CALL_CHUNK",
+                    "TOOL_CALL_ARGS",
                     messageId=msg_id,
                     toolCallId=tc_id,
-                    args=json.dumps(tc_args) if tc_args else "{}",
-                    arguments=json.dumps(tc_args) if tc_args else "{}"
+                    delta=args_json,
+                    args=args_json
+                )
+            
+            elif kind == "on_tool_end":
+                in_tool_count = max(0, in_tool_count - 1)
+                tc_id = event.get("run_id", str(uuid.uuid4()))
+                result = event.get("data", {}).get("output")
+                yield _build_sse_event(
+                    "TOOL_CALL_END",
+                    messageId=msg_id,
+                    toolCallId=tc_id,
+                    toolName=event.get("name", "tool"),
+                    result=str(result) if result else "success"
                 )
 
     except Exception as e:
