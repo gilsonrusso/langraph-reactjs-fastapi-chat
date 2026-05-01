@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     # Setup da memória (SQLite)
     async with AsyncSqliteSaver.from_conn_string(DB_NAME) as saver:
         # 1. Inicializa os sub-agentes globais para as ferramentas
-        initialize_global_agents()
+        initialize_global_agents(checkpointer=saver)
 
         # 2. Inicializa o supervisor como agente principal da aplicação
         app.state.agent = create_agent(

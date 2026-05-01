@@ -16,9 +16,10 @@ import PersonIcon from "@mui/icons-material/Person";
 import type { MessagePart as UIMessagePart } from "@tanstack/ai-client";
 import { fetchServerSentEvents } from "@tanstack/ai-client";
 import { type UIMessage, useChat } from "@tanstack/ai-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useLocation } from "react-router";
 import { chatService } from "../services/chatService";
+import ApprovalCard from "../components/chat/ApprovalCard";
 
 interface ChatRouteProps {
   onHistoryUpdate?: () => void;
@@ -31,10 +32,16 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
     ? location.pathname.split("/")[2]
     : null;
 
+  const decisionRef = useRef<any>(null);
+  const [isDecisionLoading, setIsDecisionLoading] = useState(false);
+
   const connection = React.useMemo(
     () =>
       fetchServerSentEvents("http://localhost:8000/api/chat", () => ({
-        body: threadId ? { checkpoint_id: threadId } : {},
+        body: {
+          checkpoint_id: threadId,
+          decision: decisionRef.current,
+        },
       })),
     [threadId],
   );
@@ -83,10 +90,21 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim() && !isLoading) {
+      decisionRef.current = null; // Garante que não estamos enviando uma decisão antiga
       sendMessage(input);
       setInput("");
-      // Opcionalmente atualiza o histórico (ex: para refletir na sidebar)
       if (onHistoryUpdate) onHistoryUpdate();
+    }
+  };
+
+  const handleDecision = async (decision: any) => {
+    setIsDecisionLoading(true);
+    try {
+      decisionRef.current = decision;
+      await sendMessage("");
+      decisionRef.current = null;
+    } finally {
+      setIsDecisionLoading(false);
     }
   };
 
@@ -289,15 +307,59 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
                           );
                         }
                         if (part.type === "tool-call") {
+                          const toolName = (part as any).name || (part as any).toolName;
+                          console.log("DEBUG: Tool call detected", { toolName, part, messageMetadata: message.metadata });
+
+                          if (toolName === "human_review") {
+                            let hitlRequest = (part as any).args?.hitl_request || 
+                                              (message as any).metadata?.hitl_request ||
+                                              (part as any).args || 
+                                              (part as any).arguments ||
+                                              (part as any).toolArgs;
+                            
+                            // If it's a string (common in streaming), try to parse it
+                            if (typeof hitlRequest === "string" && hitlRequest !== "") {
+                              try {
+                                const parsed = JSON.parse(hitlRequest);
+                                hitlRequest = parsed.hitl_request || parsed;
+                              } catch (e) {
+                                console.error("Error parsing HITL request string:", e);
+                              }
+                            }
+
+                            if (!hitlRequest || (typeof hitlRequest === "object" && Object.keys(hitlRequest).length === 0)) {
+                              console.log("HITL request is still empty, waiting for more data...");
+                              return null;
+                            }
+                            
+                            return (
+                              <ApprovalCard 
+                                key={partKey}
+                                hitlRequest={hitlRequest} 
+                                onDecision={handleDecision}
+                                isLoading={isDecisionLoading || isLoading}
+                              />
+                            );
+                          }
                           return (
-                            <Typography
+                            <Stack
                               key={partKey}
-                              variant="body2"
-                              sx={{ color: "primary.main", mb: 1 }}
+                              direction="row"
+                              spacing={1}
+                              alignItems="center"
+                              sx={{
+                                py: 1,
+                                px: 2,
+                                bgcolor: "action.hover",
+                                borderRadius: "12px",
+                                borderLeft: "4px solid",
+                                borderColor: "primary.main",
+                              }}
                             >
-                              🛠️ Usando ferramenta: <strong>{part.name}</strong>
-                              ...
-                            </Typography>
+                              <Typography variant="body2" sx={{ color: "text.secondary" }}>
+                                🛠️ Usando ferramenta: <strong>{toolName || "..."}</strong>
+                              </Typography>
+                            </Stack>
                           );
                         }
                         if (part.type === "tool-result") {

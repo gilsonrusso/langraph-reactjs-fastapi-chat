@@ -18,17 +18,21 @@ router = APIRouter(prefix="/api")
     responses={400: {"description": "Requisição inválida: nenhuma mensagem enviada"}},
 )
 async def chat(request: ChatRequest, fast_request: Request):
-    if not request.messages:
-        raise HTTPException(status_code=400, detail="Sem mensagens")
-
-    last_msg = request.messages[-1]
-    message_text = "".join(p.content for p in last_msg.parts if p.type == "text")
-
     thread_id = request.checkpoint_id or str(uuid.uuid4())
     agent = fast_request.app.state.agent
 
+    if request.decision:
+        # Se temos uma decisão, o message_text é opcional/ignorado
+        message_text = None
+    else:
+        if not request.messages:
+            raise HTTPException(status_code=400, detail="Sem mensagens")
+        last_msg = request.messages[-1]
+        message_text = "".join(p.content for p in last_msg.parts if p.type == "text")
+
     return StreamingResponse(
-        stream_chat(agent, message_text, thread_id), media_type="text/event-stream"
+        stream_chat(agent, message_text, thread_id, decision=request.decision),
+        media_type="text/event-stream"
     )
 
 
@@ -59,6 +63,31 @@ async def get_chat_history(thread_id: str, fast_request: Request):
         messages = [
             _convert_msg_to_tanstack(msg) for msg in state.values.get("messages", [])
         ]
+
+        # Injetar o interrupt como uma "tool call" virtual se existir
+        if state.tasks:
+            for task in state.tasks:
+                if task.interrupts and messages:
+                    hitl_request = task.interrupts[0].value
+                    hitl_data = (
+                        hitl_request
+                        if isinstance(hitl_request, dict)
+                        else hitl_request.dict()
+                    )
+                    # Adicionar ao último assistant message
+                    # Procuramos a última mensagem do assistente para anexar o pedido de revisão
+                    for msg in reversed(messages):
+                        if msg["role"] == "assistant":
+                            msg["parts"].append(
+                                {
+                                    "type": "tool-call",
+                                    "name": "human_review",
+                                    "toolCallId": f"hitl-{uuid.uuid4()}",
+                                    "args": {"hitl_request": hitl_data},
+                                }
+                            )
+                            break
+
         return {"messages": messages}
     except Exception as e:
         logger.error(f"Error fetching history for thread {thread_id}: {e}")

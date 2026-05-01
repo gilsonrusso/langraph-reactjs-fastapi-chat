@@ -2,6 +2,8 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langchain.tools import tool
 from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
+from langgraph.errors import GraphInterrupt
 
 from llm import get_llm
 from tools import create_calendar_event, get_available_time_slots, send_email
@@ -40,7 +42,7 @@ _calendar_agent = None
 _email_agent = None
 
 
-def create_sub_agents():
+def create_sub_agents(checkpointer=None):
     """Fábrica para criar os sub-agentes especialistas."""
     llm = get_llm()
 
@@ -54,6 +56,7 @@ def create_sub_agents():
                 description_prefix="Calendar event pending approval",
             ),
         ],
+        checkpointer=checkpointer,
     )
 
     email_agent = create_agent(
@@ -62,19 +65,22 @@ def create_sub_agents():
         system_prompt=EMAIL_AGENT_PROMPT,
         middleware=[
             HumanInTheLoopMiddleware(
-                interrupt_on={"send_email": True},
+                interrupt_on={
+                    "send_email": {"allowed_decisions": ["approve", "reject"]},
+                },
                 description_prefix="Outbound email pending approval",
             ),
         ],
+        checkpointer=checkpointer,
     )
 
     return calendar_agent, email_agent
 
 
-def initialize_global_agents():
+def initialize_global_agents(checkpointer=None):
     """Inicializa os agentes globais para uso nas ferramentas de orquestração."""
     global _calendar_agent, _email_agent
-    _calendar_agent, _email_agent = create_sub_agents()
+    _calendar_agent, _email_agent = create_sub_agents(checkpointer=checkpointer)
     return _calendar_agent, _email_agent
 
 
@@ -82,25 +88,33 @@ def initialize_global_agents():
 
 
 @tool
-async def schedule_event(request: str) -> str:
+async def schedule_event(request: str, config: RunnableConfig) -> str:
     """Schedule calendar events using natural language.
     Use this when the user wants to create, modify, or check calendar appointments.
     """
     if _calendar_agent is None:
         return "Erro: Agente de calendário não inicializado."
-    result = await _calendar_agent.ainvoke(
-        {"messages": [HumanMessage(content=request)]}
-    )
-    return result["messages"][-1].content
+    try:
+        result = await _calendar_agent.ainvoke(
+            {"messages": [HumanMessage(content=request)]}, config=config, version="v2"
+        )
+        return result.messages[-1].content
+    except GraphInterrupt as e:
+        raise e
 
 
 @tool
-async def manage_email(request: str) -> str:
+async def manage_email(request: str, config: RunnableConfig) -> str:
     """Send emails using natural language.
     Use this when the user wants to send notifications, reminders,
     or any email communication.
     """
     if _email_agent is None:
         return "Erro: Agente de e-mail não inicializado."
-    result = await _email_agent.ainvoke({"messages": [HumanMessage(content=request)]})
-    return result["messages"][-1].content
+    try:
+        result = await _email_agent.ainvoke(
+            {"messages": [HumanMessage(content=request)]}, config=config, version="v2"
+        )
+        return result.messages[-1].content
+    except GraphInterrupt as e:
+        raise e
