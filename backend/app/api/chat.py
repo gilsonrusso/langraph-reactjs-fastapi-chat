@@ -70,11 +70,15 @@ async def get_chat_history(thread_id: str, fast_request: Request):
             for task in state.tasks:
                 if task.interrupts and messages:
                     hitl_request = task.interrupts[0].value
-                    hitl_data = (
-                        hitl_request
-                        if isinstance(hitl_request, dict)
-                        else hitl_request.dict()
-                    )
+                    hitl_data_obj = hitl_request
+                    if hasattr(hitl_data_obj, "model_dump"):
+                        hitl_data = hitl_data_obj.model_dump()
+                    elif hasattr(hitl_data_obj, "dict"):
+                        hitl_data = hitl_data_obj.dict()
+                    elif isinstance(hitl_data_obj, dict):
+                        hitl_data = hitl_data_obj
+                    else:
+                        hitl_data = str(hitl_data_obj)
                     # Adicionar ao último assistant message
                     # Procuramos a última mensagem do assistente para anexar o pedido de revisão
                     for msg in reversed(messages):

@@ -13,7 +13,7 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@fontsource/roboto": "^5.2.10",
-    "@mui/icons-material": "^7.3.9",
+    "@mui/icons-material": "^7.3.10",
     "@mui/material": "^7.3.9",
     "@tanstack/ai": "^0.8.1",
     "@tanstack/ai-react": "^0.7.2",

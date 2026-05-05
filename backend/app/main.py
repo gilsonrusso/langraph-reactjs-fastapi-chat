@@ -1,29 +1,19 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastmcp import FastMCP
-from fastmcp.server.openapi import RouteMap, MCPType
-from langchain.agents import create_agent
+from fastmcp.server.providers.openapi import RouteMap, MCPType
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from .agents.graph import (
-    SUPERVISOR_PROMPT,
-    analyze_sales,
-    consult_products,
-    initialize_global_agents,
-    manage_email,
-    schedule_event,
-)
+from .agents.graph import build_main_graph
 from .core.config import DB_NAME, settings
 
 # Módulos locais
-from .core.llm import get_llm
 from .core.logger import logger
 from .api.chat import router
 from .api.products import router as products_router
 from .api.sales import router as sales_router
-from .tools.tools import get_weather
 
 
 # --- Ciclo de Vida ---
@@ -31,22 +21,10 @@ from .tools.tools import get_weather
 async def lifespan(app: FastAPI):
     # Setup da memória (SQLite)
     async with AsyncSqliteSaver.from_conn_string(DB_NAME) as saver:
-        # 1. Inicializa os sub-agentes globais para as ferramentas
-        initialize_global_agents(checkpointer=saver)
-
-        # 2. Inicializa o supervisor como agente principal da aplicação
-        app.state.agent = create_agent(
-            get_llm(),
-            tools=[
-                schedule_event,
-                manage_email,
-                get_weather,
-                consult_products,
-                analyze_sales,
-            ],
-            system_prompt=SUPERVISOR_PROMPT,
-            checkpointer=saver,
-        )
+        # Inicializa o supervisor como um StateGraph compilado dinamicamente
+        logger.info("Construindo Network of Agents...")
+        app.state.agent = await build_main_graph(checkpointer=saver, mcp_server=mcp)
+        logger.info("Grafo construído com sucesso.")
         yield
 
 

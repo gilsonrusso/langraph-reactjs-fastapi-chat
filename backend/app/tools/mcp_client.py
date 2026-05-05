@@ -16,54 +16,97 @@ class MCPToolDiscovery:
         # O Client do FastMCP infere o transporte automaticamente (SSE para HTTP URLs)
         self.url = url
 
-    async def get_tools(self, tag: Optional[str] = None) -> List[StructuredTool]:
+    async def get_tools(self, tag: Optional[str] = None, mcp_server: Any = None) -> List[StructuredTool]:
         """
-        Conecta ao servidor MCP, lista as ferramentas e as filtra por tag.
-        Retorna uma lista de StructuredTool prontas para uso em agentes LangChain.
+        Descobre as ferramentas. Se mcp_server for fornecido, usa-o localmente.
+        Caso contrário, conecta via SSE na URL configurada.
         """
         lc_tools = []
         try:
-            client = Client(self.url)
-            async with client:
-                mcp_tools = await client.list_tools()
+            if mcp_server:
+                logger.info(f"Descobrindo ferramentas localmente do servidor MCP: {mcp_server.name}")
+                mcp_tools = await mcp_server.list_tools()
+                logger.info(f"Total de ferramentas encontradas no servidor: {len(mcp_tools)}")
                 
                 for mcp_tool in mcp_tools:
-                    # Filtro por tag (usando o padrão FastMCP extraído na inspeção)
+                    logger.info(f"Inspecionando ferramenta MCP: {mcp_tool.name}, Meta: {getattr(mcp_tool, 'meta', 'N/A')}")
                     if tag:
                         tool_tags = []
-                        if hasattr(mcp_tool, "meta") and isinstance(mcp_tool.meta, dict):
-                            tool_tags = mcp_tool.meta.get("fastmcp", {}).get("tags", [])
+                        # 1. Tenta atributo direto (comum em execução local)
+                        if hasattr(mcp_tool, "tags") and mcp_tool.tags:
+                            tool_tags = list(mcp_tool.tags)
+                        
+                        # 2. Tenta atributo meta (comum em execução remota)
+                        elif hasattr(mcp_tool, "meta") and isinstance(mcp_tool.meta, dict):
+                            fastmcp_meta = mcp_tool.meta.get("fastmcp", {})
+                            if isinstance(fastmcp_meta, dict):
+                                tool_tags = fastmcp_meta.get("tags", [])
+                            
+                            if not tool_tags:
+                                tool_tags = mcp_tool.meta.get("tags", [])
                         
                         if tag not in tool_tags:
+                            logger.debug(f"Ferramenta {mcp_tool.name} não possui a tag {tag}. Tags encontradas: {tool_tags}")
                             continue
                     
-                    logger.info(f"Convertendo ferramenta MCP: {mcp_tool.name} (Tags: {tag})")
-                    lc_tools.append(self._convert_to_langchain_tool(mcp_tool))
+                    logger.info(f"Convertendo ferramenta MCP local: {mcp_tool.name} (Tags: {tag})")
+                    lc_tools.append(self._convert_to_langchain_tool(mcp_tool, mcp_server=mcp_server))
+            else:
+                client = Client(self.url)
+                async with client:
+                    mcp_tools = await client.list_tools()
+                    logger.info(f"Total de ferramentas remotas encontradas: {len(mcp_tools)}")
+                    
+                    for mcp_tool in mcp_tools:
+                        if tag:
+                            tool_tags = []
+                            # 1. Tenta atributo direto
+                            if hasattr(mcp_tool, "tags") and mcp_tool.tags:
+                                tool_tags = list(mcp_tool.tags)
+                            
+                            # 2. Tenta atributo meta
+                            elif hasattr(mcp_tool, "meta") and isinstance(mcp_tool.meta, dict):
+                                fastmcp_meta = mcp_tool.meta.get("fastmcp", {})
+                                if isinstance(fastmcp_meta, dict):
+                                    tool_tags = fastmcp_meta.get("tags", [])
+                                if not tool_tags:
+                                    tool_tags = mcp_tool.meta.get("tags", [])
+                            
+                            if tag not in tool_tags:
+                                continue
+                        
+                        logger.info(f"Convertendo ferramenta MCP remota: {mcp_tool.name} (Tags: {tag})")
+                        lc_tools.append(self._convert_to_langchain_tool(mcp_tool))
                     
             return lc_tools
         except Exception as e:
             logger.exception(f"Erro ao buscar ferramentas do MCP: {e}")
             return []
 
-    def _convert_to_langchain_tool(self, mcp_tool) -> StructuredTool:
+    def _convert_to_langchain_tool(self, mcp_tool, mcp_server: Any = None) -> StructuredTool:
         """
         Converte uma ferramenta MCP individual em uma StructuredTool do LangChain.
         """
         
         async def call_tool_wrapper(**kwargs):
-            # Wrapper para chamar a ferramenta remotamente via fastmcp.Client
             logger.info(f"Executando ferramenta MCP {mcp_tool.name} com args: {kwargs}")
-            client = Client(self.url)
-            async with client:
-                result = await client.call_tool(mcp_tool.name, kwargs)
-                logger.info(f"Resultado da ferramenta MCP {mcp_tool.name}: {result}")
-                
-                # O resultado do FastMCP Client costuma ter o atributo 'data'
-                if hasattr(result, "data"):
-                    return str(result.data)
-                if hasattr(result, "text"):
-                    return result.text
-                return str(result)
+            
+            if mcp_server:
+                # Execução local direta
+                result = await mcp_server.call_tool(mcp_tool.name, kwargs)
+            else:
+                # Execução remota via SSE Client
+                client = Client(self.url)
+                async with client:
+                    result = await client.call_tool(mcp_tool.name, kwargs)
+            
+            logger.info(f"Resultado da ferramenta MCP {mcp_tool.name}: {result}")
+            
+            if hasattr(result, "data"):
+                return str(result.data)
+            if hasattr(result, "text"):
+                return result.text
+            return str(result)
 
         return StructuredTool.from_function(
             func=None,

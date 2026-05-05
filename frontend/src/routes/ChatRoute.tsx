@@ -9,10 +9,14 @@ import {
   CircularProgress,
   Snackbar,
   Alert,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import PersonIcon from "@mui/icons-material/Person";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import type { MessagePart as UIMessagePart } from "@tanstack/ai-client";
 import { fetchServerSentEvents } from "@tanstack/ai-client";
 import { type UIMessage, useChat } from "@tanstack/ai-react";
@@ -46,7 +50,7 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
     [threadId],
   );
 
-  const { messages, sendMessage, isLoading, setMessages, error } = useChat({
+  const { messages, sendMessage, isLoading, setMessages, error, append } = useChat({
     connection,
   });
 
@@ -58,7 +62,7 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
     }
   }, [error]);
 
-  const handleErrorClose = (event?: React.SyntheticEvent | Event, reason?: string) => {
+  const handleErrorClose = (_event?: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === "clickaway") {
       return;
     }
@@ -101,7 +105,10 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
     setIsDecisionLoading(true);
     try {
       decisionRef.current = decision;
-      await sendMessage("");
+      await append({
+        role: "user",
+        content: decision.type === "approve" ? "Aprovar ação" : "Rejeitar ação",
+      } as any);
       decisionRef.current = null;
     } finally {
       setIsDecisionLoading(false);
@@ -277,115 +284,108 @@ export const ChatRoute: React.FC<ChatRouteProps> = ({ onHistoryUpdate }) => {
                         borderRadius: "20px",
                       }}
                     >
-                      {message.parts.map((part) => {
-                        let partKey: string;
-                        if ("toolCallId" in part) {
-                          partKey = part.toolCallId;
-                        } else if ("id" in part) {
-                          partKey = part.id;
-                        } else {
-                          const contentSample =
-                            "content" in part
-                              ? part.content?.substring(0, 20)
-                              : "";
-                          partKey = `${message.id}-${part.type}-${contentSample}`;
-                        }
+                      {(() => {
+                        const thinkingParts = message.parts.filter(p => p.type === "thinking");
+                        const toolCalls = message.parts.filter(p => p.type === "tool-call" && (p as any).name !== "human_review" && (p as any).toolName !== "human_review");
+                        const toolResults = message.parts.filter(p => p.type === "tool-result");
+                        const hitlParts = message.parts.filter(p => p.type === "tool-call" && ((p as any).name === "human_review" || (p as any).toolName === "human_review"));
+                        const textParts = message.parts.filter(p => p.type === "text");
 
-                        if (part.type === "thinking") {
-                          return (
-                            <Typography
-                              key={partKey}
-                              variant="body2"
-                              sx={{
-                                color: "text.secondary",
-                                fontStyle: "italic",
-                                mb: 1,
-                              }}
-                            >
-                              💭 Thinking: {part.content}
-                            </Typography>
-                          );
-                        }
-                        if (part.type === "tool-call") {
-                          const toolName = (part as any).name || (part as any).toolName;
-                          console.log("DEBUG: Tool call detected", { toolName, part, messageMetadata: message.metadata });
-
-                          if (toolName === "human_review") {
-                            let hitlRequest = (part as any).args?.hitl_request || 
-                                              (message as any).metadata?.hitl_request ||
-                                              (part as any).args || 
-                                              (part as any).arguments ||
-                                              (part as any).toolArgs;
+                        return (
+                          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                            {thinkingParts.length > 0 && (
+                              <Box>
+                                {thinkingParts.map((part, i) => (
+                                  <Typography key={`thinking-${i}`} variant="body2" sx={{ color: "text.secondary", fontStyle: "italic" }}>
+                                    💭 Thinking: {part.content}
+                                  </Typography>
+                                ))}
+                              </Box>
+                            )}
                             
-                            // If it's a string (common in streaming), try to parse it
-                            if (typeof hitlRequest === "string" && hitlRequest !== "") {
-                              try {
-                                const parsed = JSON.parse(hitlRequest);
-                                hitlRequest = parsed.hitl_request || parsed;
-                              } catch (e) {
-                                console.error("Error parsing HITL request string:", e);
-                              }
-                            }
+                            {toolCalls.length > 0 && (
+                              <Accordion
+                                disableGutters
+                                elevation={0}
+                                sx={{
+                                  bgcolor: "background.paper",
+                                  border: "1px solid",
+                                  borderColor: "divider",
+                                  borderRadius: "12px",
+                                  "&:before": { display: "none" },
+                                }}
+                              >
+                                <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 48, "& .MuiAccordionSummary-content": { my: 1 } }}>
+                                  <Typography variant="body2" fontWeight="medium" sx={{ color: "text.secondary" }}>
+                                    Agent steps ({toolCalls.length})
+                                  </Typography>
+                                </AccordionSummary>
+                                <AccordionDetails sx={{ display: "flex", flexDirection: "column", gap: 1, p: 2, pt: 0 }}>
+                                  {toolCalls.map((tc, index) => {
+                                    const tcId = (tc as any).toolCallId;
+                                    const toolName = (tc as any).name || (tc as any).toolName;
+                                    const hasResult = toolResults.some(tr => (tr as any).toolCallId === tcId);
+                                    return (
+                                      <Stack key={tcId || index} direction="row" spacing={2} alignItems="center">
+                                        <Typography variant="caption" sx={{ color: "text.secondary", fontFamily: "monospace" }}>
+                                          {String(index + 1).padStart(2, "0")}
+                                        </Typography>
+                                        <Typography variant="body2" sx={{ color: hasResult ? "text.secondary" : "primary.main" }}>
+                                          {hasResult ? "Executou" : "Executando"} <strong>{toolName || "ferramenta"}</strong>
+                                        </Typography>
+                                      </Stack>
+                                    );
+                                  })}
+                                </AccordionDetails>
+                              </Accordion>
+                            )}
 
-                            if (!hitlRequest || (typeof hitlRequest === "object" && Object.keys(hitlRequest).length === 0)) {
-                              console.log("HITL request is still empty, waiting for more data...");
-                              return null;
-                            }
-                            
-                            return (
-                              <ApprovalCard 
-                                key={partKey}
-                                hitlRequest={hitlRequest} 
-                                onDecision={handleDecision}
-                                isLoading={isDecisionLoading || isLoading}
-                              />
-                            );
-                          }
-                          return (
-                            <Stack
-                              key={partKey}
-                              direction="row"
-                              spacing={1}
-                              alignItems="center"
-                              sx={{
-                                py: 1,
-                                px: 2,
-                                bgcolor: "action.hover",
-                                borderRadius: "12px",
-                                borderLeft: "4px solid",
-                                borderColor: "primary.main",
-                              }}
-                            >
-                              <Typography variant="body2" sx={{ color: "text.secondary" }}>
-                                🛠️ Usando ferramenta: <strong>{toolName || "..."}</strong>
-                              </Typography>
-                            </Stack>
-                          );
-                        }
-                        if (part.type === "tool-result") {
-                          return (
-                            <Typography
-                              key={partKey}
-                              variant="body2"
-                              sx={{ color: "success.main", mb: 1 }}
-                            >
-                              ✅ Ferramenta concluída.
-                            </Typography>
-                          );
-                        }
-                        if (part.type === "text") {
-                          return (
-                            <Typography
-                              key={partKey}
-                              variant="body1"
-                              sx={{ whiteSpace: "pre-wrap" }}
-                            >
-                              {part.content}
-                            </Typography>
-                          );
-                        }
-                        return null;
-                      })}
+                            {hitlParts.length > 0 && (
+                              <Box>
+                                {hitlParts.map((part, i) => {
+                                  let hitlRequest = (part as any).args?.hitl_request || 
+                                                    (message as any).metadata?.hitl_request ||
+                                                    (part as any).args || 
+                                                    (part as any).arguments ||
+                                                    (part as any).toolArgs;
+                                  if (typeof hitlRequest === "string" && hitlRequest !== "") {
+                                    try {
+                                      const parsed = JSON.parse(hitlRequest);
+                                      hitlRequest = parsed.hitl_request || parsed;
+                                    } catch (e) {
+                                      console.error("Error parsing HITL request string:", e);
+                                    }
+                                  }
+                                  const tcId = (part as any).toolCallId || (part as any).id;
+                                  const hasResult = toolResults.some(tr => (tr as any).toolCallId === tcId);
+
+                                  if (!hitlRequest || (typeof hitlRequest === "object" && Object.keys(hitlRequest).length === 0) || hasResult) {
+                                    return null;
+                                  }
+                                  return (
+                                    <ApprovalCard 
+                                      key={`hitl-${i}`}
+                                      hitlRequest={hitlRequest} 
+                                      onDecision={handleDecision}
+                                      isLoading={isDecisionLoading || isLoading}
+                                    />
+                                  );
+                                })}
+                              </Box>
+                            )}
+
+                            {textParts.length > 0 && (
+                              <Box>
+                                {textParts.map((part, i) => (
+                                  <Typography key={`text-${i}`} variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
+                                    {part.content}
+                                  </Typography>
+                                ))}
+                              </Box>
+                            )}
+                          </Box>
+                        );
+                      })()}
                     </Box>
                   </Stack>
                 );
